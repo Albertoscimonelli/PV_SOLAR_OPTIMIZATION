@@ -308,7 +308,7 @@ disp(Results);
 writetable(Results, "results_unmet_load.csv");
 fprintf('Salvato in: results_unmet_load.csv\n');
 
-%% 6) GRAFICO 3D: MODULI vs INCLINAZIONE vs NPV
+%% 6) GRAFICO 3D: MODULI vs INCLINAZIONE vs LCOE
 figure('Position', [100 100 1200 900]);
 
 uniqueTilts_3D = unique(tilt);
@@ -316,10 +316,10 @@ uniqueModules_3D = unique(nModules);
 
 [T_grid, M_grid] = meshgrid(uniqueTilts_3D, uniqueModules_3D);
 
-% Interpola NPV sulla griglia (attenzione all’ordine!)
+% Interpola LCOE sulla griglia
 Z_grid = griddata(tilt, nModules, LCOE, T_grid, M_grid, 'natural'); % 'natural' più stabile di 'cubic'
 
-% Superficie: X=Moduli, Y=Tilt
+% Superficie: X=Moduli, Y=Tilt, Z=LCOE
 surf(M_grid, T_grid, Z_grid, 'FaceAlpha', 0.6, 'EdgeColor', 'none');
 hold on;
 
@@ -329,11 +329,11 @@ scatter3(nModules, tilt, LCOE, 150, LCOE, 'filled', ...
 grid on;
 xlabel('Numero Moduli', 'FontSize', 12, 'FontWeight', 'bold');
 ylabel('Inclinazione [°]', 'FontSize', 12, 'FontWeight', 'bold');
-zlabel('NPV [k€]', 'FontSize', 12, 'FontWeight', 'bold');
-title('Analisi Configurazioni: NPV vs Moduli vs Inclinazione', 'FontSize', 14, 'FontWeight', 'bold');
+zlabel('LCOE [€/kWh]', 'FontSize', 12, 'FontWeight', 'bold');
+title('Analisi Configurazioni: LCOE vs Moduli vs Inclinazione', 'FontSize', 14, 'FontWeight', 'bold');
 
 c = colorbar;
-c.Label.String = 'LCOE [€kWh]';
+c.Label.String = 'LCOE [€/kWh]';
 c.Label.FontSize = 11;
 colormap(jet);
 
@@ -341,12 +341,13 @@ view(-37.5, 30);
 lighting gouraud;
 camlight('headlight');
 
-[~, topIdx] = maxk(NPV, 3);
+% Trova le 3 configurazioni con LCOE più basso (migliori)
+[~, topIdx] = mink(LCOE, 3);
 for i = 1:3
     text(nModules(topIdx(i)), tilt(topIdx(i)), LCOE(topIdx(i)), ...
-        sprintf(' Top %d\n %.0f mod, %.0f°\n %.1f k€', i, nModules(topIdx(i)), tilt(topIdx(i)), LCOE(topIdx(i))), ...
-        'FontSize', 9, 'FontWeight', 'bold', 'Color', 'red', ...
-        'BackgroundColor', [1 1 1 0.7], 'EdgeColor', 'red');
+        sprintf(' Top %d\n %.0f mod, %.0f°\n %.4f €/kWh', i, nModules(topIdx(i)), tilt(topIdx(i)), LCOE(topIdx(i))), ...
+        'FontSize', 9, 'FontWeight', 'bold', 'Color', 'green', ...
+        'BackgroundColor', [1 1 1 0.7], 'EdgeColor', 'green');
 end
 
 
@@ -443,3 +444,104 @@ sgtitle('Confronto NPV e LCOE per Tutte le Configurazioni', 'FontSize', 14, 'Fon
 % Salva figura
 % saveas(gcf, 'plot_LCOE_vs_NPV.png');
 % fprintf('Grafico LCOE vs NPV salvato in: plot_LCOE_vs_NPV.png\n');
+
+%% 9) ANALISI ECONOMICA DETTAGLIATA - SCENARIO 1 (BESS Ottimale)
+% Trova la configurazione con NPV massimo
+[~, bestIdx] = max(NPV);
+
+fprintf('\n\n╔════════════════════════════════════════════════════════════╗\n');
+fprintf('║   SCENARIO 1: BESS OTTIMALE (Capacità che azzera unmet load)  ║\n');
+fprintf('╚════════════════════════════════════════════════════════════╝\n');
+fprintf('Configurazione selezionata: %s\n', cfgNames(bestIdx));
+fprintf('  - Moduli: %d\n', nModules(bestIdx));
+fprintf('  - Inclinazione: %d°\n', tilt(bestIdx));
+fprintf('  - Potenza Inverter: %.0f kW\n', invPower_kW(bestIdx));
+fprintf('  - Capacità Batteria: %.2f kWh\n', BESS_min(bestIdx));
+
+% Calcola CAPEX per la migliore configurazione - Scenario 1
+best_CAPEX_S1 = (COST_PV * nModules(bestIdx) + COST_INV * invPower_kW(bestIdx)) * 2 + COST_BATT * BESS_min(bestIdx);
+
+% Chiama Simulazione_Eco - SCENARIO 1
+Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_min(bestIdx), SAVINGS_Y1(bestIdx), best_CAPEX_S1, 'Scenario 1: BESS Ottimale');
+
+%% 10) ANALISI ECONOMICA DETTAGLIATA - SCENARIO 2 (BESS Fissa 200 kWh)
+BESS_FIXED = 200;  % Capacità batteria fissa [kWh]
+
+fprintf('\n\n╔════════════════════════════════════════════════════════════╗\n');
+fprintf('║       SCENARIO 2: BESS FISSA (200 kWh)                        ║\n');
+fprintf('╚════════════════════════════════════════════════════════════╝\n');
+fprintf('Configurazione selezionata: %s\n', cfgNames(bestIdx));
+fprintf('  - Moduli: %d\n', nModules(bestIdx));
+fprintf('  - Inclinazione: %d°\n', tilt(bestIdx));
+fprintf('  - Potenza Inverter: %.0f kW\n', invPower_kW(bestIdx));
+fprintf('  - Capacità Batteria: %.2f kWh (FISSA)\n', BESS_FIXED);
+
+% Calcola CAPEX per Scenario 2 (con batteria fissa 200 kWh)
+best_CAPEX_S2 = (COST_PV * nModules(bestIdx) + COST_INV * invPower_kW(bestIdx)) * 2 + COST_BATT * BESS_FIXED;
+
+% Per lo Scenario 2, dobbiamo ricalcolare i savings perché con 200 kWh
+% avremo un unmet load diverso da zero
+% Rileggi il file PV della migliore configurazione
+bestFile = fullfile(pvFolder, pvFiles(find(allModules == nModules(bestIdx) & allTilts == tilt(bestIdx), 1)).name);
+TTpv_best = readPVsystHourlyCSV(bestFile);
+pv_kWh_best = TTpv_best.E_kWh;
+
+% Simula batteria con 200 kWh per calcolare unmet load
+[unmet_S2, ~] = simulateBattery(load_kWh, pv_kWh_best, BESS_FIXED, BATT_EFF, SOC_MIN, SOC_MAX);
+
+% Calcola savings Scenario 2 (con unmet load residuo)
+savings_S2 = Costo_annuo - unmet_S2 * COST_EL;
+
+fprintf('  - Unmet Load con 200 kWh: %.2f kWh/anno\n', unmet_S2);
+fprintf('  - Costo energia dalla rete: %.2f €/anno\n', unmet_S2 * COST_EL);
+
+% Chiama Simulazione_Eco - SCENARIO 2
+Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_FIXED, savings_S2, best_CAPEX_S2, 'Scenario 2: BESS 200 kWh');
+
+
+%% === FUNZIONE LOCALE: simulateBattery ===
+function [unmet_total, SOC_history] = simulateBattery(load_kWh, pv_kWh, BESS_cap, eff, SOC_min, SOC_max)
+% Simula batteria ora per ora
+%
+% Output:
+%   unmet_total - energia totale non coperta [kWh]
+%   SOC_history - storico SOC [8760×1] in percentuale (0-100%)
+
+    n = numel(load_kWh);
+    
+    % Capacità utilizzabile [kWh]
+    cap_usable = BESS_cap * (SOC_max - SOC_min);
+    
+    % Stato batteria [kWh] - inizia a metà della finestra utilizzabile
+    SOC = cap_usable / 2;  
+    SOC_history = zeros(n, 1);
+    
+    unmet_total = 0;
+    
+    for t = 1:n
+        net_power = pv_kWh(t) - load_kWh(t);  % Bilancio orario
+        
+        if net_power > 0
+            % Surplus: carica batteria (perdite in carica)
+            energy_to_charge = min(net_power * eff, cap_usable - SOC);
+            SOC = SOC + energy_to_charge;
+            
+        else
+            % Deficit: scarica batteria (perdite in scarica)
+            energy_needed = -net_power;
+            energy_from_battery = min(energy_needed / eff, SOC);
+            SOC = SOC - energy_from_battery;
+            
+            % Energia fornita effettivamente (con perdite)
+            energy_delivered = energy_from_battery * eff;
+            
+            % Energia non coperta
+            unmet = energy_needed - energy_delivered;
+            unmet_total = unmet_total + max(unmet, 0);
+        end
+        
+        % Converti SOC in percentuale della capacità totale
+        SOC_percent = SOC_min * 100 + (SOC / cap_usable) * (SOC_max - SOC_min) * 100;
+        SOC_history(t) = SOC_percent;
+    end
+end
