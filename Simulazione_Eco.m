@@ -1,4 +1,4 @@
-function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CAPEX, scenarioName)
+function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CAPEX, scenarioName, loanParams)
     % SIMULAZIONE_ECO Esegue l'analisi finanziaria dettagliata per una configurazione
     %
     % Input:
@@ -8,13 +8,25 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     %   savings_Y1       - Risparmio anno 1 [€]
     %   CAPEX            - Investimento iniziale totale [€]
     %   scenarioName     - (Opzionale) Nome dello scenario per i grafici
+    %   loanParams       - (Opzionale) Struct con parametri prestito:
+    %                      .enabled  - true/false per attivare finanziamento
+    %                      .rate     - tasso di interesse annuo (es. 0.04 = 4%)
+    %                      .years    - durata del prestito in anni
     %
-    % Esempio di chiamata:
+    % Esempio di chiamata senza prestito:
     %   Simulazione_Eco(440, 250, 1634.46, 22147.18, 285135.2, 'Scenario 1')
+    % Esempio con prestito:
+    %   loan.enabled = true; loan.rate = 0.04; loan.years = 25;
+    %   Simulazione_Eco(440, 250, 200, 20000, 100000, 'Scenario 3', loan)
     
     % Parametro opzionale: nome scenario
     if nargin < 6 || isempty(scenarioName)
         scenarioName = 'Scenario';
+    end
+    
+    % Parametro opzionale: prestito bancario
+    if nargin < 7 || isempty(loanParams)
+        loanParams.enabled = false;
     end
     
     %% 1. Parametri Economici
@@ -31,6 +43,24 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     % Costo sostituzione batteria (indicizzato all'inflazione all'anno 15)
     batt_replacement_cost = COST_BATT * bessCapacity_kWh * (1 + TASSO_INF)^(BATT_REPLACEMENT_YEAR-1);
     
+    % === CALCOLO RATA PRESTITO (se abilitato) ===
+    if loanParams.enabled
+        loan_rate = loanParams.rate;
+        loan_years = loanParams.years;
+        % Formula rata costante (ammortamento francese)
+        % Rata = Capitale * [r(1+r)^n] / [(1+r)^n - 1]
+        loan_payment = CAPEX * (loan_rate * (1 + loan_rate)^loan_years) / ((1 + loan_rate)^loan_years - 1);
+        fprintf('\n=== FINANZIAMENTO BANCARIO ===\n');
+        fprintf('Capitale finanziato: %.2f €\n', CAPEX);
+        fprintf('Tasso di interesse: %.2f%%\n', loan_rate * 100);
+        fprintf('Durata prestito: %d anni\n', loan_years);
+        fprintf('Rata annuale: %.2f €/anno\n', loan_payment);
+        fprintf('Totale restituito: %.2f € (interessi: %.2f €)\n', loan_payment * loan_years, loan_payment * loan_years - CAPEX);
+    else
+        loan_payment = 0;
+        loan_years = 0;
+    end
+    
     %% 2. Proiezione Flussi di Cassa Anno per Anno
     years = 0:YEARS;
     cash_flow = zeros(1, numel(years));
@@ -42,22 +72,42 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     opex_arr = zeros(1, numel(years));       % Uscite (OPEX)
     capex_arr = zeros(1, numel(years));      % Uscite (CAPEX solo anno 0)
     batt_repl_arr = zeros(1, numel(years));  % Uscite (Sostituzione batteria anno 15)
+    loan_arr = zeros(1, numel(years));       % Uscite (Rate prestito)
     
-    % Anno 0: Solo investimento iniziale
-    cash_flow(1) = -CAPEX;
-    discounted_cf(1) = -CAPEX;
-    cumulative_npv(1) = -CAPEX;
-    capex_arr(1) = -CAPEX;
+    % Anno 0: Investimento iniziale (0 se finanziato con prestito)
+    if loanParams.enabled
+        cash_flow(1) = 0;  % Nessun esborso iniziale (finanziato)
+        discounted_cf(1) = 0;
+        cumulative_npv(1) = 0;
+        capex_arr(1) = 0;
+    else
+        cash_flow(1) = -CAPEX;
+        discounted_cf(1) = -CAPEX;
+        cumulative_npv(1) = -CAPEX;
+        capex_arr(1) = -CAPEX;
+    end
     
     fprintf('\n--- ANALISI FLUSSI DI CASSA (%s) ---\n', scenarioName);
-    fprintf('%-6s | %-12s | %-12s | %-14s | %-12s | %-12s\n', 'Anno', 'Savings', 'OPEX', 'Batt Repl.', 'Cash Flow', 'NPV Cumul.');
-    fprintf('--------------------------------------------------------------------------------------------\n');
-    fprintf('%-6d | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f\n', 0, 0, 0, 0, cash_flow(1), cumulative_npv(1));
+    if loanParams.enabled
+        fprintf('%-6s | %-12s | %-12s | %-12s | %-14s | %-12s | %-12s\n', 'Anno', 'Savings', 'OPEX', 'Rata Prest.', 'Batt Repl.', 'Cash Flow', 'NPV Cumul.');
+        fprintf('--------------------------------------------------------------------------------------------------------------\n');
+        fprintf('%-6d | %-12.2f | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f\n', 0, 0, 0, 0, 0, cash_flow(1), cumulative_npv(1));
+    else
+        fprintf('%-6s | %-12s | %-12s | %-14s | %-12s | %-12s\n', 'Anno', 'Savings', 'OPEX', 'Batt Repl.', 'Cash Flow', 'NPV Cumul.');
+        fprintf('--------------------------------------------------------------------------------------------\n');
+        fprintf('%-6d | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f\n', 0, 0, 0, 0, cash_flow(1), cumulative_npv(1));
+    end
 
     for t = 1:YEARS
         % Calcolo risparmi e opex indicizzati all'inflazione
         savings_t = savings_Y1 * (1 + TASSO_INF)^(t-1);
         opex_t = opex_Y1 * (1 + TASSO_INF)^(t-1);
+        
+        % Rata prestito (se attivo e entro la durata)
+        loan_t = 0;
+        if loanParams.enabled && t <= loan_years
+            loan_t = loan_payment;
+        end
         
         % Sostituzione batteria anno 15
         batt_repl_t = 0;
@@ -69,9 +119,10 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
         savings_arr(t+1) = savings_t;
         opex_arr(t+1) = -opex_t;  % Negativo perché è un'uscita
         batt_repl_arr(t+1) = -batt_repl_t;  % Negativo perché è un'uscita
+        loan_arr(t+1) = -loan_t;  % Negativo perché è un'uscita
         
-        % Flusso di cassa netto dell'anno t (inclusa sostituzione batteria)
-        cash_flow(t+1) = savings_t - opex_t - batt_repl_t;
+        % Flusso di cassa netto dell'anno t (inclusa sostituzione batteria e rata prestito)
+        cash_flow(t+1) = savings_t - opex_t - batt_repl_t - loan_t;
         
         % Attualizzazione al tempo zero (Discounting)
         discounted_cf(t+1) = cash_flow(t+1) / (1 + DMR)^t;
@@ -79,10 +130,19 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
         % NPV Cumulativo
         cumulative_npv(t+1) = cumulative_npv(t) + discounted_cf(t+1);
         
-        if t == BATT_REPLACEMENT_YEAR
-            fprintf('%-6d | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f  <-- SOST. BATTERIA\n', t, savings_t, opex_t, batt_repl_t, cash_flow(t+1), cumulative_npv(t+1));
+        % Stampa riga tabella
+        if loanParams.enabled
+            if t == BATT_REPLACEMENT_YEAR
+                fprintf('%-6d | %-12.2f | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f  <-- SOST. BATTERIA\n', t, savings_t, opex_t, loan_t, batt_repl_t, cash_flow(t+1), cumulative_npv(t+1));
+            else
+                fprintf('%-6d | %-12.2f | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f\n', t, savings_t, opex_t, loan_t, batt_repl_t, cash_flow(t+1), cumulative_npv(t+1));
+            end
         else
-            fprintf('%-6d | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f\n', t, savings_t, opex_t, batt_repl_t, cash_flow(t+1), cumulative_npv(t+1));
+            if t == BATT_REPLACEMENT_YEAR
+                fprintf('%-6d | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f  <-- SOST. BATTERIA\n', t, savings_t, opex_t, batt_repl_t, cash_flow(t+1), cumulative_npv(t+1));
+            else
+                fprintf('%-6d | %-12.2f | %-12.2f | %-14.2f | %-12.2f | %-12.2f\n', t, savings_t, opex_t, batt_repl_t, cash_flow(t+1), cumulative_npv(t+1));
+            end
         end
     end
 
@@ -92,9 +152,9 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     % Grafico a barre raggruppate: Entrate vs Uscite
     subplot(2,1,1);
     
-    % Prepara dati per barre raggruppate (inclusa sostituzione batteria)
-    % Uscite totali = OPEX + Sostituzione batteria
-    total_outflows = opex_arr(2:end)' + batt_repl_arr(2:end)';
+    % Prepara dati per barre raggruppate (inclusa sostituzione batteria e prestito)
+    % Uscite totali = OPEX + Sostituzione batteria + Rata prestito
+    total_outflows = opex_arr(2:end)' + batt_repl_arr(2:end)' + loan_arr(2:end)';
     bar_data = [savings_arr(2:end)', total_outflows];
     b = bar(1:YEARS, bar_data, 'grouped');
     b(1).FaceColor = [0.2 0.7 0.3];  % Verde per Savings (entrate)
@@ -116,13 +176,25 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     ylabel('Flusso [€]', 'FontSize', 11, 'FontWeight', 'bold');
     xlabel('Anno', 'FontSize', 11, 'FontWeight', 'bold');
     title('Flussi di Cassa Annuali: Entrate vs Uscite', 'FontSize', 12, 'FontWeight', 'bold');
-    legend('Savings (Entrate)', 'Uscite (OPEX + Sost. Batt)', 'Cash Flow Netto', 'Location', 'best');
+    
+    % Legenda dinamica in base a scenario prestito
+    if loanParams.enabled
+        legend('Savings (Entrate)', 'Uscite (OPEX + Batt + Rata)', 'Cash Flow Netto', 'Location', 'best');
+    else
+        legend('Savings (Entrate)', 'Uscite (OPEX + Sost. Batt)', 'Cash Flow Netto', 'Location', 'best');
+    end
     grid on;
     xlim([0 YEARS+1]);
     
-    % Aggiungi annotazione CAPEX anno 0
-    text(0.5, -CAPEX/2, sprintf('CAPEX\n%.0f €', CAPEX), ...
-        'HorizontalAlignment', 'center', 'FontSize', 9, 'FontWeight', 'bold', 'Color', 'red');
+    % Aggiungi annotazione CAPEX anno 0 (solo se non c'è prestito)
+    if ~loanParams.enabled
+        text(0.5, -CAPEX/2, sprintf('CAPEX\n%.0f €', CAPEX), ...
+            'HorizontalAlignment', 'center', 'FontSize', 9, 'FontWeight', 'bold', 'Color', 'red');
+    else
+        % Annotazione per scenario con prestito
+        text(0.5, mean(cash_flow(2:6)), sprintf('Finanziato\n100%%'), ...
+            'HorizontalAlignment', 'center', 'FontSize', 9, 'FontWeight', 'bold', 'Color', 'blue');
+    end
     
     % Subplot 2: NPV Cumulativo
     subplot(2,1,2);
@@ -168,9 +240,26 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     fprintf('   RIEPILOGO ANALISI ECONOMICA - %s   \n', scenarioName);
     fprintf('============================================\n');
     fprintf('CAPEX Totale:          %12.2f €\n', CAPEX);
+    
+    % Dettagli prestito se abilitato
+    if loanParams.enabled
+        total_interest = loan_payment * loanParams.years - CAPEX;
+        fprintf('--------------------------------------------\n');
+        fprintf('FINANZIAMENTO BANCARIO:\n');
+        fprintf('  Tasso interesse:     %12.2f %%\n', loanParams.rate * 100);
+        fprintf('  Durata prestito:     %12d anni\n', loanParams.years);
+        fprintf('  Rata annuale:        %12.2f €/anno\n', loan_payment);
+        fprintf('  Totale rate:         %12.2f €\n', loan_payment * loanParams.years);
+        fprintf('  Interessi totali:    %12.2f €\n', total_interest);
+        fprintf('--------------------------------------------\n');
+    end
+    
     fprintf('OPEX Anno 1:           %12.2f €/anno\n', opex_Y1);
     fprintf('Savings Anno 1:        %12.2f €/anno\n', savings_Y1);
     fprintf('Net Benefit Anno 1:    %12.2f €/anno\n', savings_Y1 - opex_Y1);
+    if loanParams.enabled
+        fprintf('Net Benefit (con rata):%12.2f €/anno\n', savings_Y1 - opex_Y1 - loan_payment);
+    end
     fprintf('--------------------------------------------\n');
     fprintf('Sost. Batteria (Anno %d): %10.2f €\n', BATT_REPLACEMENT_YEAR, batt_replacement_cost);
     fprintf('--------------------------------------------\n');
