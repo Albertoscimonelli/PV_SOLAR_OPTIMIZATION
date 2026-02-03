@@ -13,15 +13,15 @@ clear; clc;
 
 %% === PARAMETRI ECONOMICI ===
 % Costi dei componenti dell'impianto [€]
-COST_PV = 70;      % Costo pannelli fotovoltaici [€/modulo]
-COST_INV = 150;    % Costo inverter [€/kW]
-COST_BATT = 340;   % Costo batteria [€/kWh]
+COST_PV = 100;      % Costo pannelli fotovoltaici [€/modulo]
+COST_INV = 50;    % Costo inverter [€/kW]
+COST_BATT = 120;   % Costo batteria [€/kWh]
 COST_EL = 0.22;    % Costo energia elettrica [€/kWh]
-CONS_1Y = 335000;     % Consumo annuo [kWh]
-OPEX_RATE = 0.03;    % OPEX annuo come % del CAPEX (3%)
+CONS_1Y = 100669;     % Consumo annuo [kWh]
+OPEX_RATE = 0.02;    % OPEX annuo come % del CAPEX (3%)
 TASSO_INF = 0.02;
 DMR = 0.04;          % Discount Market Rate
-YEAR = 20;           % Anni di simulazione
+YEAR = 25;           % Anni di simulazione
 
 % Parametri batteria
 BATT_EFF = 0.95;     % Efficienza carica/scarica batteria (95%)
@@ -46,7 +46,8 @@ idxLoad = find(numCols, 1, "first");
 assert(~isempty(idxLoad), "Nessuna colonna numerica nel CSV consumi.");
 
 % Estrae i valori di consumo in kWh
-load_kWh = double(Tload{:, idxLoad});
+load_kWh_START = double(Tload{:, idxLoad});
+load_kWh = load_kWh_START*1.125;
 
 % Verifica che ci siano esattamente 8760 ore (1 anno)
 assert(numel(load_kWh) == 8760, "Consumi: attese 8760 righe, trovate %d", numel(load_kWh));
@@ -165,7 +166,7 @@ for iMod = 1:nModulesValues
         cfgNames(idx_global) = string(name);
         
         %% CALCOLO ECONOMICO
-        IC = COST_PV * nModules(idx_global) + COST_INV * invPower_kW(idx_global) + COST_BATT * BESS_min(idx_global);
+        IC = (COST_PV * nModules(idx_global) + COST_INV * invPower_kW(idx_global))*2 + COST_BATT * BESS_min(idx_global);
         
         % Con batteria ottimale, unmet load = 0 (assumo)
         SAVINGS_Y1(idx_global) = Costo_annuo;  % Risparmio totale (nessun acquisto rete)
@@ -177,7 +178,7 @@ for iMod = 1:nModulesValues
         % CRF = [r * (1+r)^n] / [(1+r)^n - 1]
         CRF = (DMR * (1 + DMR)^YEAR) / ((1 + DMR)^YEAR - 1);
         CAPEX_annualizzato = IC * CRF;
-        LCOE(idx_global) = (CAPEX_annualizzato + OPEX(idx_global)) / PV_prod_kWh(idx_global);
+        LCOE(idx_global) = (CAPEX_annualizzato + OPEX(idx_global)) /CONS_1Y;
         
         % NPV considerando anche gli OPEX annuali
         % Net benefit annuale = SAVINGS - OPEX
@@ -240,48 +241,48 @@ for iMod = 1:nModulesValues
         %     % close(gcf);  % Chiudi la figura per liberare memoria
         %     % fprintf('     Plot gennaio salvato in: %s\n', plotName);
         %
-        %% === PLOT ANNO COMPLETO (TUTTE LE CONFIGURAZIONI) ===
-        % Anno completo: tutte le 8760 ore
-        idx_year = 1:8760;
-
-        % Crea vettore temporale (giorni)
-        time_days = (1:8760) / 24;  % Converti ore in giorni (0-365)
-
-        % Estrai dati anno completo
-        load_year = load_kWh(idx_year);
-        pv_year = pv_kWh(idx_year);
-        soc_year = SOC_history(idx_year);
-
-        % Crea figura
-        figure('Position', [100 100 1400 900]);
-
-        % Subplot 1: Consumi e Produzione
-        subplot(2,1,1);
-        hold on;
-        plot(time_days, load_year, 'r-', 'LineWidth', 1, 'DisplayName', 'Consumi');
-        plot(time_days, pv_year, 'b-', 'LineWidth', 1, 'DisplayName', 'Produzione PV');
-        grid on;
-        xlabel('Tempo [giorni]');
-        ylabel('Energia [kWh]');
-        title(sprintf('Consumi e Produzione PV - Anno Completo - Config: %s', name));
-        legend('Location', 'best');
-        xlim([1 365]);
-
-        % Subplot 2: Stato di Carica Batteria
-        subplot(2,1,2);
-        plot(time_days, soc_year, 'g-', 'LineWidth', 1.5);
-        grid on;
-        xlabel('Tempo [giorni]');
-        ylabel('SOC [%]');
-        title(sprintf('Stato di Carica Batteria - Anno Completo (Cap: %.1f kWh)', BESS_min(idx_global)));
-        xlim([1 365]);
-        ylim([0 100]);
-
-        % Aggiungi linee SOC min/max
-        hold on;
-        yline(SOC_MIN * 100, 'r--', 'LineWidth', 1.5);
-        yline(SOC_MAX * 100, 'r--', 'LineWidth', 1.5);
-        legend('SOC', sprintf('SOC min (%.0f%%)', SOC_MIN*100), sprintf('SOC max (%.0f%%)', SOC_MAX*100), 'Location', 'best');
+        % %% === PLOT ANNO COMPLETO (TUTTE LE CONFIGURAZIONI) ===
+        % % Anno completo: tutte le 8760 ore
+        % idx_year = 1:8760;
+        % 
+        % % Crea vettore temporale (giorni)
+        % time_days = (1:8760) / 24;  % Converti ore in giorni (0-365)
+        % 
+        % % Estrai dati anno completo
+        % load_year = load_kWh(idx_year);
+        % pv_year = pv_kWh(idx_year);
+        % soc_year = SOC_history(idx_year);
+        % 
+        % % Crea figura
+        % figure('Position', [100 100 1400 900]);
+        % 
+        % % Subplot 1: Consumi e Produzione
+        % subplot(2,1,1);
+        % hold on;
+        % plot(time_days, load_year, 'r-', 'LineWidth', 1, 'DisplayName', 'Consumi');
+        % plot(time_days, pv_year, 'b-', 'LineWidth', 1, 'DisplayName', 'Produzione PV');
+        % grid on;
+        % xlabel('Tempo [giorni]');
+        % ylabel('Energia [kWh]');
+        % title(sprintf('Consumi e Produzione PV - Anno Completo - Config: %s', name));
+        % legend('Location', 'best');
+        % xlim([1 365]);
+        % 
+        % % Subplot 2: Stato di Carica Batteria
+        % subplot(2,1,2);
+        % plot(time_days, soc_year, 'g-', 'LineWidth', 1.5);
+        % grid on;
+        % xlabel('Tempo [giorni]');
+        % ylabel('SOC [%]');
+        % title(sprintf('Stato di Carica Batteria - Anno Completo (Cap: %.1f kWh)', BESS_min(idx_global)));
+        % xlim([1 365]);
+        % ylim([0 100]);
+        % 
+        % % Aggiungi linee SOC min/max
+        % hold on;
+        % yline(SOC_MIN * 100, 'r--', 'LineWidth', 1.5);
+        % yline(SOC_MAX * 100, 'r--', 'LineWidth', 1.5);
+        % legend('SOC', sprintf('SOC min (%.0f%%)', SOC_MIN*100), sprintf('SOC max (%.0f%%)', SOC_MAX*100), 'Location', 'best');
 
         % Salva figura
         % plotName = sprintf('plot_anno_completo_%s.png', strrep(name, ' ', '_'));
@@ -316,13 +317,13 @@ uniqueModules_3D = unique(nModules);
 [T_grid, M_grid] = meshgrid(uniqueTilts_3D, uniqueModules_3D);
 
 % Interpola NPV sulla griglia (attenzione all’ordine!)
-Z_grid = griddata(tilt, nModules, NPV/1000, T_grid, M_grid, 'natural'); % 'natural' più stabile di 'cubic'
+Z_grid = griddata(tilt, nModules, LCOE, T_grid, M_grid, 'natural'); % 'natural' più stabile di 'cubic'
 
 % Superficie: X=Moduli, Y=Tilt
 surf(M_grid, T_grid, Z_grid, 'FaceAlpha', 0.6, 'EdgeColor', 'none');
 hold on;
 
-scatter3(nModules, tilt, NPV/1000, 150, NPV/1000, 'filled', ...
+scatter3(nModules, tilt, LCOE, 150, LCOE, 'filled', ...
     'MarkerEdgeColor', 'k', 'LineWidth', 1.5);
 
 grid on;
@@ -332,7 +333,7 @@ zlabel('NPV [k€]', 'FontSize', 12, 'FontWeight', 'bold');
 title('Analisi Configurazioni: NPV vs Moduli vs Inclinazione', 'FontSize', 14, 'FontWeight', 'bold');
 
 c = colorbar;
-c.Label.String = 'NPV [k€]';
+c.Label.String = 'LCOE [€kWh]';
 c.Label.FontSize = 11;
 colormap(jet);
 
@@ -342,8 +343,8 @@ camlight('headlight');
 
 [~, topIdx] = maxk(NPV, 3);
 for i = 1:3
-    text(nModules(topIdx(i)), tilt(topIdx(i)), NPV(topIdx(i))/1000, ...
-        sprintf(' Top %d\n %.0f mod, %.0f°\n %.1f k€', i, nModules(topIdx(i)), tilt(topIdx(i)), NPV(topIdx(i))/1000), ...
+    text(nModules(topIdx(i)), tilt(topIdx(i)), LCOE(topIdx(i)), ...
+        sprintf(' Top %d\n %.0f mod, %.0f°\n %.1f k€', i, nModules(topIdx(i)), tilt(topIdx(i)), LCOE(topIdx(i))), ...
         'FontSize', 9, 'FontWeight', 'bold', 'Color', 'red', ...
         'BackgroundColor', [1 1 1 0.7], 'EdgeColor', 'red');
 end
@@ -393,3 +394,52 @@ end
 % saveas(gcf, 'plot_heatmap_NPV.png');
 % fprintf('Heatmap NPV salvata in: plot_heatmap_NPV.png\n');
 
+%% GRAFICO LCOE vs NPV - Confronto a Barre
+figure('Position', [100 100 1400 700]);
+
+% Crea etichette per le configurazioni (Moduli_Tilt)
+config_labels = strings(nCfg, 1);
+for i = 1:nCfg
+    config_labels(i) = sprintf('%d mod\n%d°', nModules(i), tilt(i));
+end
+
+% Ordina per numero di moduli e poi per tilt
+[~, sort_idx] = sortrows([nModules, tilt]);
+config_labels_sorted = config_labels(sort_idx);
+NPV_sorted = NPV(sort_idx) / 1000;  % Converti in k€
+LCOE_sorted = LCOE(sort_idx) * 1000;  % Converti in €/MWh per scala comparabile
+
+% Subplot 1: NPV per configurazione
+subplot(2,1,1);
+bar_npv = bar(categorical(config_labels_sorted, config_labels_sorted), NPV_sorted, 'FaceColor', [0.2 0.6 0.8]);
+grid on;
+ylabel('NPV [k€]', 'FontSize', 11, 'FontWeight', 'bold');
+title('NPV per Configurazione', 'FontSize', 12, 'FontWeight', 'bold');
+% Colora barre in base al valore
+for i = 1:length(NPV_sorted)
+    if NPV_sorted(i) == max(NPV_sorted)
+        bar_npv.FaceColor = 'flat';
+        bar_npv.CData(i,:) = [0.2 0.8 0.2];  % Verde per il massimo
+    end
+end
+
+% Subplot 2: LCOE per configurazione
+subplot(2,1,2);
+bar_lcoe = bar(categorical(config_labels_sorted, config_labels_sorted), LCOE_sorted, 'FaceColor', [0.9 0.4 0.3]);
+grid on;
+ylabel('LCOE [€/MWh]', 'FontSize', 11, 'FontWeight', 'bold');
+xlabel('Configurazione (Moduli, Inclinazione)', 'FontSize', 11, 'FontWeight', 'bold');
+title('LCOE per Configurazione', 'FontSize', 12, 'FontWeight', 'bold');
+% Colora barre in base al valore
+for i = 1:length(LCOE_sorted)
+    if LCOE_sorted(i) == min(LCOE_sorted)
+        bar_lcoe.FaceColor = 'flat';
+        bar_lcoe.CData(i,:) = [0.2 0.8 0.2];  % Verde per il minimo
+    end
+end
+
+sgtitle('Confronto NPV e LCOE per Tutte le Configurazioni', 'FontSize', 14, 'FontWeight', 'bold');
+
+% Salva figura
+% saveas(gcf, 'plot_LCOE_vs_NPV.png');
+% fprintf('Grafico LCOE vs NPV salvato in: plot_LCOE_vs_NPV.png\n');

@@ -28,7 +28,7 @@ function [BESS_min, SOC_history] = findMinBatteryCapacity(load_kWh, pv_kWh, eff,
     % Ricerca binaria vera e propria
     for iter = 1:max_iter
         BESS_mid = (BESS_low + BESS_high) / 2;
-        [unmet, SOC_history] = simulateBattery(load_kWh, pv_kWh, BESS_mid, eff, SOC_min, SOC_max);
+        [unmet, ~] = simulateBattery(load_kWh, pv_kWh, BESS_mid, eff, SOC_min, SOC_max);
         
         if BESS_high - BESS_low < tolerance
             break;  % Convergenza raggiunta
