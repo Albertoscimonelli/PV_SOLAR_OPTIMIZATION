@@ -1,4 +1,4 @@
-function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CAPEX, scenarioName, loanParams)
+function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CAPEX, scenarioName, loanParams, nInverters)
     % SIMULAZIONE_ECO Esegue l'analisi finanziaria dettagliata per una configurazione
     %
     % Input:
@@ -12,12 +12,13 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     %                      .enabled  - true/false per attivare finanziamento
     %                      .rate     - tasso di interesse annuo (es. 0.04 = 4%)
     %                      .years    - durata del prestito in anni
+    %   nInverters       - (Opzionale) Numero di inverter (default = 1)
     %
     % Esempio di chiamata senza prestito:
     %   Simulazione_Eco(440, 250, 1634.46, 22147.18, 285135.2, 'Scenario 1')
     % Esempio con prestito:
     %   loan.enabled = true; loan.rate = 0.04; loan.years = 25;
-    %   Simulazione_Eco(440, 250, 200, 20000, 100000, 'Scenario 3', loan)
+    %   Simulazione_Eco(440, 250, 200, 20000, 100000, 'Scenario 3', loan, 2)
     
     % Parametro opzionale: nome scenario
     if nargin < 6 || isempty(scenarioName)
@@ -29,19 +30,25 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
         loanParams.enabled = false;
     end
     
+    % Parametro opzionale: numero di inverter (default = 1)
+    if nargin < 8 || isempty(nInverters)
+        nInverters = 1;
+    end
+    
     %% 1. Parametri Economici
     YEARS = 25;           % Orizzonte temporale [anni]
     DMR = 0.04;           % Discount Market Rate (4%)
     TASSO_INF = 0.02;     % Tasso inflazione (2%)
     OPEX_RATE = 0.02;     % OPEX annuo come % del CAPEX (2%)
     COST_BATT = 120;      % Costo batteria [€/kWh]
+    COST_INV = 50;        % Costo inverter [€/kW]
     BATT_REPLACEMENT_YEAR = 15;  % Anno sostituzione batteria
     
     % Calcolo OPEX anno 1
     opex_Y1 = OPEX_RATE * CAPEX;
     
-    % Costo sostituzione batteria (indicizzato all'inflazione all'anno 15)
-    batt_replacement_cost = COST_BATT * bessCapacity_kWh * (1 + TASSO_INF)^(BATT_REPLACEMENT_YEAR-1);
+    % Costo sostituzione batteria + inverter (indicizzato all'inflazione all'anno 15)
+    batt_replacement_cost = (COST_BATT * bessCapacity_kWh + COST_INV * invPower_kW * nInverters) * (1 + TASSO_INF)^(BATT_REPLACEMENT_YEAR-1);
     
     % === CALCOLO RATA PRESTITO (se abilitato) ===
     if loanParams.enabled
@@ -163,15 +170,6 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     hold on;
     % Linea del cash flow netto
     plot(1:YEARS, cash_flow(2:end), '-ok', 'LineWidth', 2, 'MarkerFaceColor', 'k', 'MarkerSize', 6);
-    
-    % Evidenzia anno sostituzione batteria con barra aggiuntiva
-    if BATT_REPLACEMENT_YEAR <= YEARS
-        bar(BATT_REPLACEMENT_YEAR, batt_repl_arr(BATT_REPLACEMENT_YEAR+1), 0.3, ...
-            'FaceColor', [0.6 0.1 0.1], 'EdgeColor', 'k', 'LineWidth', 1.5);
-        text(BATT_REPLACEMENT_YEAR, batt_repl_arr(BATT_REPLACEMENT_YEAR+1) - 5000, ...
-            sprintf('Sost. Batt.\n%.0f €', -batt_repl_arr(BATT_REPLACEMENT_YEAR+1)), ...
-            'HorizontalAlignment', 'center', 'FontSize', 8, 'FontWeight', 'bold', 'Color', [0.6 0.1 0.1]);
-    end
     
     ylabel('Flusso [€]', 'FontSize', 11, 'FontWeight', 'bold');
     xlabel('Anno', 'FontSize', 11, 'FontWeight', 'bold');

@@ -10,19 +10,20 @@
 %   - results_unmet_load.csv: tabella con energia non coperta per ogni configurazione
 
 clear; clc;
+close all;
 
 %% === PARAMETRI ECONOMICI ===
 % Costi dei componenti dell'impianto [€]
 COST_PV = 100;      % Costo pannelli fotovoltaici [€/modulo]
 COST_INV = 50;    % Costo inverter [€/kW]
-COST_BATT = 120;   % Costo batteria [€/kWh]
+COST_BATT = 130;   % Costo batteria [€/kWh]
 COST_EL = 0.22;    % Costo energia elettrica [€/kWh]
 CONS_1Y = 100669;     % Consumo annuo [kWh]
 OPEX_RATE = 0.02;    % OPEX annuo come % del CAPEX (2%)
-TASSO_INF = 0.02;    % Tasso inflazione annuo (2%)
+TASSO_INF = 0.03;    % Tasso inflazione annuo (2%)
 DMR = 0.04;          % Discount Market Rate (4%)
 YEAR = 25;           % Orizzonte temporale [anni]
-PREZZO_VENDITA = 0.12;  % Prezzo vendita energia in eccesso [€/kWh]
+PREZZO_VENDITA = 0.1;  % Prezzo vendita energia in eccesso [€/kWh]
 
 % Parametri batteria
 BATT_EFF = 0.95;     % Efficienza carica/scarica batteria (95%)
@@ -462,8 +463,8 @@ fprintf('  - Capacità Batteria: %.2f kWh\n', BESS_min(bestIdx));
 % Calcola CAPEX per la migliore configurazione - Scenario 1
 best_CAPEX_S1 = (COST_PV * nModules(bestIdx) + COST_INV * invPower_kW(bestIdx)) * 2 + COST_BATT * BESS_min(bestIdx);
 
-% Chiama Simulazione_Eco - SCENARIO 1
-Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_min(bestIdx), SAVINGS_Y1(bestIdx), best_CAPEX_S1, 'Scenario 1: BESS Ottimale');
+% Chiama Simulazione_Eco - SCENARIO 1 (1 inverter)
+Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_min(bestIdx), SAVINGS_Y1(bestIdx), best_CAPEX_S1, 'Scenario 1: BESS Ottimale', [], 1);
 
 %% 10) ANALISI ECONOMICA DETTAGLIATA - SCENARIO 2 (BESS Fissa 200 kWh)
 BESS_FIXED = 200;  % Capacità batteria fissa [kWh]
@@ -508,8 +509,8 @@ fprintf('  - Energia venduta alla rete: %.2f kWh/anno\n', excess_S2);
 fprintf('  - Ricavi vendita (@ %.2f €/kWh): %.2f €/anno\n', PREZZO_VENDITA, ricavi_vendita);
 fprintf('  - Savings netti: %.2f €/anno\n', savings_S2);
 
-% Chiama Simulazione_Eco - SCENARIO 2
-Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_FIXED, savings_S2, best_CAPEX_S2, 'Scenario 2: BESS 200 kWh');
+% Chiama Simulazione_Eco - SCENARIO 2 (2 inverter)
+Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_FIXED, savings_S2, best_CAPEX_S2, 'Scenario 2: BESS 200 kWh', [], 2);
 
 %% 11) GRAFICI DETTAGLIATI SCENARIO 2
 
@@ -720,9 +721,9 @@ fprintf('   Rata annuale costante:   %10.2f €/anno\n', loan_payment_preview);
 fprintf('   Totale da rimborsare:    %10.2f €\n', loan_payment_preview * loan_years);
 fprintf('   Interessi totali:        %10.2f €\n', loan_payment_preview * loan_years - best_CAPEX_S2);
 
-% Chiama Simulazione_Eco con parametri del prestito
+% Chiama Simulazione_Eco con parametri del prestito - SCENARIO 3 (2 inverter)
 Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_FIXED, ...
-                savings_S2, best_CAPEX_S2, 'Scenario 3: BESS 200 kWh + Prestito Bancario', loanParams_S3);
+                savings_S2, best_CAPEX_S2, 'Scenario 3: BESS 200 kWh + Prestito Bancario', loanParams_S3, 2);
 
 
 %% === FUNZIONE LOCALE: simulateBattery ===
