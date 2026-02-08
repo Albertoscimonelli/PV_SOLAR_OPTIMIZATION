@@ -1,4 +1,4 @@
-function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CAPEX, scenarioName, loanParams, nInverters)
+function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CAPEX, scenarioName, loanParams, nInverters, ecoParams)
     % SIMULAZIONE_ECO Esegue l'analisi finanziaria dettagliata per una configurazione
     %
     % Input:
@@ -13,12 +13,22 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
     %                      .rate     - tasso di interesse annuo (es. 0.04 = 4%)
     %                      .years    - durata del prestito in anni
     %   nInverters       - (Opzionale) Numero di inverter (default = 1)
+    %   ecoParams        - (Opzionale) Struct con parametri economici:
+    %                      .YEARS              - Orizzonte temporale [anni]
+    %                      .DMR                - Discount Market Rate
+    %                      .TASSO_INF          - Tasso inflazione
+    %                      .OPEX_RATE          - OPEX annuo come % del CAPEX
+    %                      .COST_BATT          - Costo batteria [€/kWh]
+    %                      .COST_INV           - Costo inverter [€/kW]
+    %                      .BATT_REPLACEMENT_YEAR - Anno sostituzione batteria
     %
     % Esempio di chiamata senza prestito:
     %   Simulazione_Eco(440, 250, 1634.46, 22147.18, 285135.2, 'Scenario 1')
-    % Esempio con prestito:
+    % Esempio con prestito e parametri custom:
     %   loan.enabled = true; loan.rate = 0.04; loan.years = 25;
-    %   Simulazione_Eco(440, 250, 200, 20000, 100000, 'Scenario 3', loan, 2)
+    %   eco.YEARS = 25; eco.DMR = 0.04; eco.TASSO_INF = 0.03; eco.OPEX_RATE = 0.02;
+    %   eco.COST_BATT = 130; eco.COST_INV = 50; eco.BATT_REPLACEMENT_YEAR = 15;
+    %   Simulazione_Eco(440, 250, 200, 20000, 100000, 'Scenario 3', loan, 2, eco)
     
     % Parametro opzionale: nome scenario
     if nargin < 6 || isempty(scenarioName)
@@ -35,14 +45,26 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
         nInverters = 1;
     end
     
-    %% 1. Parametri Economici
-    YEARS = 25;           % Orizzonte temporale [anni]
-    DMR = 0.04;           % Discount Market Rate (4%)
-    TASSO_INF = 0.02;     % Tasso inflazione (2%)
-    OPEX_RATE = 0.02;     % OPEX annuo come % del CAPEX (2%)
-    COST_BATT = 120;      % Costo batteria [€/kWh]
-    COST_INV = 50;        % Costo inverter [€/kW]
-    BATT_REPLACEMENT_YEAR = 15;  % Anno sostituzione batteria
+    %% 1. Parametri Economici (da struct o default)
+    if nargin < 9 || isempty(ecoParams)
+        % Valori di default (backward compatibility)
+        YEARS = 25;
+        DMR = 0.04;
+        TASSO_INF = 0.02;
+        OPEX_RATE = 0.02;
+        COST_BATT = 120;
+        COST_INV = 50;
+        BATT_REPLACEMENT_YEAR = 15;
+    else
+        % Usa parametri dalla struct (con fallback ai default se campo mancante)
+        YEARS = getFieldOrDefault(ecoParams, 'YEARS', 25);
+        DMR = getFieldOrDefault(ecoParams, 'DMR', 0.04);
+        TASSO_INF = getFieldOrDefault(ecoParams, 'TASSO_INF', 0.02);
+        OPEX_RATE = getFieldOrDefault(ecoParams, 'OPEX_RATE', 0.02);
+        COST_BATT = getFieldOrDefault(ecoParams, 'COST_BATT', 120);
+        COST_INV = getFieldOrDefault(ecoParams, 'COST_INV', 50);
+        BATT_REPLACEMENT_YEAR = getFieldOrDefault(ecoParams, 'BATT_REPLACEMENT_YEAR', 15);
+    end
     
     % Calcolo OPEX anno 1
     opex_Y1 = OPEX_RATE * CAPEX;
@@ -266,4 +288,13 @@ function Simulazione_Eco(nModules, invPower_kW, bessCapacity_kWh, savings_Y1, CA
         fprintf('Payback Period:        %12.1f anni\n', payback_exact);
     end
     fprintf('============================================\n');
+end
+
+%% Funzione helper per ottenere campo da struct con valore di default
+function val = getFieldOrDefault(s, fieldName, defaultVal)
+    if isfield(s, fieldName)
+        val = s.(fieldName);
+    else
+        val = defaultVal;
+    end
 end

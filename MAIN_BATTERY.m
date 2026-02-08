@@ -20,10 +20,20 @@ COST_BATT = 130;   % Costo batteria [€/kWh]
 COST_EL = 0.22;    % Costo energia elettrica [€/kWh]
 CONS_1Y = 100669;     % Consumo annuo [kWh]
 OPEX_RATE = 0.02;    % OPEX annuo come % del CAPEX (2%)
-TASSO_INF = 0.03;    % Tasso inflazione annuo (2%)
+TASSO_INF = 0.03;    % Tasso inflazione annuo (3%)
 DMR = 0.04;          % Discount Market Rate (4%)
 YEAR = 25;           % Orizzonte temporale [anni]
 PREZZO_VENDITA = 0.1;  % Prezzo vendita energia in eccesso [€/kWh]
+BATT_REPLACEMENT_YEAR = 15;  % Anno sostituzione batteria + inverter
+
+% Struct parametri economici per Simulazione_Eco
+ecoParams.YEARS = YEAR;
+ecoParams.DMR = DMR;
+ecoParams.TASSO_INF = TASSO_INF;
+ecoParams.OPEX_RATE = OPEX_RATE;
+ecoParams.COST_BATT = COST_BATT;
+ecoParams.COST_INV = COST_INV;
+ecoParams.BATT_REPLACEMENT_YEAR = BATT_REPLACEMENT_YEAR;
 
 % Parametri batteria
 BATT_EFF = 0.95;     % Efficienza carica/scarica batteria (95%)
@@ -464,7 +474,59 @@ fprintf('  - Capacità Batteria: %.2f kWh\n', BESS_min(bestIdx));
 best_CAPEX_S1 = (COST_PV * nModules(bestIdx) + COST_INV * invPower_kW(bestIdx)) * 2 + COST_BATT * BESS_min(bestIdx);
 
 % Chiama Simulazione_Eco - SCENARIO 1 (1 inverter)
-Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_min(bestIdx), SAVINGS_Y1(bestIdx), best_CAPEX_S1, 'Scenario 1: BESS Ottimale', [], 1);
+Simulazione_Eco(nModules(bestIdx), invPower_kW(bestIdx), BESS_min(bestIdx), SAVINGS_Y1(bestIdx), best_CAPEX_S1, 'Scenario 1: BESS Ottimale', [], 1, ecoParams);
+
+%% 9.1) GRAFICO PRODUZIONE vs DOMANDA + SOC - CONFIGURAZIONE MIGLIORE (SCENARIO 1)
+% Rileggi il file PV della configurazione migliore
+bestFile_S1 = fullfile(pvFolder, pvFiles(find(allModules == nModules(bestIdx) & allTilts == tilt(bestIdx), 1)).name);
+TTpv_best_S1 = readPVsystHourlyCSV(bestFile_S1);
+pv_kWh_best_S1 = TTpv_best_S1.E_kWh;
+
+% Ricalcola SOC history per la configurazione migliore con BESS ottimale
+[~, SOC_history_S1] = findMinBatteryCapacity(load_kWh, pv_kWh_best_S1, BATT_EFF, SOC_MIN, SOC_MAX);
+
+% === GRAFICO ANNO COMPLETO ===
+figure('Position', [100 100 1400 900], 'Color', 'w');
+
+time_days = (1:8760) / 24;  % Converti ore in giorni
+
+% Subplot 1: Produzione PV vs Domanda
+subplot(2,1,1);
+hold on;
+plot(time_days, load_kWh, 'r-', 'LineWidth', 1, 'DisplayName', 'Domanda (Consumi)');
+plot(time_days, pv_kWh_best_S1, 'b-', 'LineWidth', 1, 'DisplayName', 'Produzione PV');
+grid on;
+xlabel('Giorno dell''anno', 'FontSize', 11, 'FontWeight', 'bold');
+ylabel('Energia [kWh]', 'FontSize', 11, 'FontWeight', 'bold');
+title('Produzione PV vs Domanda - Configurazione Migliore (Scenario 1)', 'FontSize', 12, 'FontWeight', 'bold');
+legend('Location', 'best');
+xlim([0 365]);
+
+% Aggiungi etichette mesi
+months_S1 = {'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'};
+days_in_month_S1 = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+cumdays_S1 = [0 cumsum(days_in_month_S1)];
+xticks(cumdays_S1(1:12) + days_in_month_S1/2);
+xticklabels(months_S1);
+
+% Subplot 2: State of Charge Batteria
+subplot(2,1,2);
+plot(time_days, SOC_history_S1, 'g-', 'LineWidth', 1.5);
+hold on;
+yline(SOC_MIN * 100, 'r--', 'LineWidth', 1.5, 'Label', sprintf('SOC min (%.0f%%)', SOC_MIN*100));
+yline(SOC_MAX * 100, 'r--', 'LineWidth', 1.5, 'Label', sprintf('SOC max (%.0f%%)', SOC_MAX*100));
+grid on;
+xlabel('Giorno dell''anno', 'FontSize', 11, 'FontWeight', 'bold');
+ylabel('State of Charge [%]', 'FontSize', 11, 'FontWeight', 'bold');
+title(sprintf('Stato di Carica Batteria (BESS Ottimale: %.1f kWh)', BESS_min(bestIdx)), 'FontSize', 12, 'FontWeight', 'bold');
+xlim([0 365]);
+ylim([0 100]);
+xticks(cumdays_S1(1:12) + days_in_month_S1/2);
+xticklabels(months_S1);
+legend('SOC', sprintf('SOC min (%.0f%%)', SOC_MIN*100), sprintf('SOC max (%.0f%%)', SOC_MAX*100), 'Location', 'best');
+
+sgtitle(sprintf('Scenario 1: %d Moduli, %d° Inclinazione, %.0f kW Inverter, %.1f kWh BESS', ...
+    nModules(bestIdx), tilt(bestIdx), invPower_kW(bestIdx), BESS_min(bestIdx)), 'FontSize', 14, 'FontWeight', 'bold');
 
 %% 10) ANALISI ECONOMICA DETTAGLIATA - SCENARIO 2 (BESS Fissa 200 kWh)
 BESS_FIXED = 200;  % Capacità batteria fissa [kWh]
